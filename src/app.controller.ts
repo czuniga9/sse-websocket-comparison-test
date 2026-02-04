@@ -27,34 +27,37 @@ export class AppController {
   getHello(): string {
     return this.appService.getHello();
   }
+
   @Get('test')
   getTest(): string {
     return 'test';
   }
+
   @Sse('quotes/sse')
   public getQuotesSSE(): Observable<MessageEvent> {
-    console.log('getQuotesSSE called');
+    // console.log('>>> getQuotesSSE called');
     return new Observable((observer) => {
-      console.log('start');
+      console.log('>>> start');
       observer.next({ data: 'start' });
 
       const promises = AppController.quotes.map((quote, index) =>
         this.sendQuote(quote, index).then((q: string) => observer.next({ data: q })),
       );
       Promise.allSettled(promises).then((results) => {
-        console.log('all quotes sent');
+        console.log('>>> all quotes sent');
         observer.complete();
         // console.log(results);
         results.filter((result) => result.status === 'rejected').forEach((result) => {
-          console.log('rejected', result.reason.cause);
+          // log any errors
+          console.log('>>> rejected', result.reason.cause);
         });
       });
     });
   }
 
   private async sendQuote(quote: string, index: number): Promise<string> {
-    if (quote === 'I see dead people.') {
-      throw new Error('I see dead people.', { cause: { index, quote } });
+    if (quote.includes('dead')) {
+      throw new Error('Dead quote', { cause: { index, quote } });
     }
     // do some work
     await new Promise((resolve) => setTimeout(resolve, quote.length * 100));
