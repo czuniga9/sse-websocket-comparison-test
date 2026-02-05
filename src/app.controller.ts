@@ -1,6 +1,7 @@
-import { Controller, Get, MessageEvent, Sse } from '@nestjs/common';
+import { Controller, Get, MessageEvent, Param, Post, Sse } from '@nestjs/common';
 import { AppService } from './app.service';
 import { Observable } from 'rxjs';
+import { Body } from '@nestjs/common';
 
 interface Quote {
   index: number;
@@ -21,6 +22,8 @@ export class AppController {
     'Nooo!.',
   ];
 
+  data: Record<string, any> = {};
+
   constructor(private readonly appService: AppService) {}
 
   @Get()
@@ -28,17 +31,23 @@ export class AppController {
     return this.appService.getHello();
   }
 
-  @Get('test')
-  getTest(): string {
-    return 'test';
+  @Post('data')
+  postData(@Body() data: Record<string, any>): string {
+    const key = Math.floor(Math.random() * 100).toString();
+    console.log(data);
+    this.data[key] = data;
+    return key;
   }
 
-  @Sse('quotes/sse')
-  public getQuotesSSE(): Observable<MessageEvent> {
+  @Sse('quotes/sse/:key')
+  public getQuotesSSE(@Param('key') key: string): Observable<MessageEvent> {
+    console.log(this.data);
+    const data = this.data[key] || 'no data';
+
     // console.log('>>> getQuotesSSE called');
     return new Observable((observer) => {
       console.log('>>> start');
-      observer.next({ data: 'start' });
+      observer.next({ 'data': data });
 
       const promises = AppController.quotes.map((quote, index) =>
         this.sendQuote(quote, index).then((q: string) => observer.next({ data: q })),
