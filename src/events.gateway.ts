@@ -9,6 +9,7 @@ import {
 } from '@nestjs/websockets';
 import { Server } from 'socket.io';
 import { Logger } from '@nestjs/common';
+import { AppService } from './app.service';
 
 @WebSocketGateway({ cors: { origin: '*' } })
 export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
@@ -16,6 +17,8 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   server: Server;
 
   private readonly logger = new Logger(EventsGateway.name);
+
+  constructor(private readonly appService: AppService) {}
 
   handleConnection(client: any) {
     this.logger.log(`Client connected: ${client.id}`);
@@ -25,18 +28,31 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     this.logger.log(`Client disconnected: ${client.id}`);
   }
 
-  @SubscribeMessage('ping')
-  handlePing(@MessageBody() _data: unknown, @ConnectedSocket() client: any) {
-    return { event: 'pong', data: { timestamp: Date.now() } };
-  }
+  @SubscribeMessage('pollQuotes')
+  async handleStartQuotes(
+    @MessageBody() payload: Record<string, unknown> | string,
+    @ConnectedSocket() client: any,
+  ) {
+    const initialData = payload ?? null;
+    if (!initialData) {
+      this.logger.warn('No payload provided');
+      client.disconnect(true);
+      return;
+    }
 
-  @SubscribeMessage('echo')
-  handleEcho(@MessageBody() data: unknown, @ConnectedSocket() client: any) {
-    return { event: 'echo', data };
-  }
+    client.emit('data', initialData);
 
-  @SubscribeMessage('broadcast')
-  handleBroadcast(@MessageBody() data: { message: string }) {
-    this.server.emit('broadcast', data);
+    const promises = this.appService.quotes.map(async (quote, index) => {
+      try {
+        const result = await this.appService.sendQuote(quote, index);
+        client.emit('quote', result);
+      } catch (err) {
+        this.logger.warn(`Quote failed: ${(err as Error).cause}`);
+      }
+    });
+
+    await Promise.allSettled(promises);
+    this.logger.log(`All quotes sent for client ${client.id}, closing connection`);
+    client.disconnect(true);
   }
 }
