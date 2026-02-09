@@ -36,6 +36,8 @@
       <div id="status" class="status disconnected">Disconnected</div>
       <section>
         <h3>Quotes (streamed, then connection closes)</h3>
+        <button id="ws-start">Start</button>
+        <button id="ws-stop" disabled>Stop</button>
         <div id="log" class="log"></div>
       </section>
 
@@ -43,12 +45,19 @@
         (function wsColumn() {
           const statusEl = document.getElementById('status');
           const logEl = document.getElementById('log');
+          const startBtn = document.getElementById('ws-start');
+          const stopBtn = document.getElementById('ws-stop');
 
           function log(msg, type) {
             const p = document.createElement('p');
             p.textContent = (type ? '[' + type + '] ' : '') + msg;
             logEl.appendChild(p);
             logEl.scrollTop = logEl.scrollHeight;
+          }
+
+          function setWsButtons(connected) {
+            startBtn.disabled = connected;
+            stopBtn.disabled = !connected;
           }
 
           let socket = null;
@@ -66,16 +75,20 @@
               statusEl.className = 'status connected';
               log('Connected');
               emitPayload();
+              setWsButtons(true);
             });
 
             socket.on('disconnect', function (reason) {
               statusEl.textContent = 'Disconnected';
               statusEl.className = 'status disconnected';
               log('Disconnected. ' + (reason === 'io server disconnect' ? 'All quotes sent, connection closed.' : reason));
+              socket = null;
+              setWsButtons(false);
             });
 
             socket.on('connect_error', function (err) {
               log('Connection error: ' + err.message, 'error');
+              setWsButtons(false);
             });
 
             socket.on('data', function (data) {
@@ -101,15 +114,26 @@
             log('Sent pollQuotes with payload');
           }
 
-          window.addEventListener('DOMContentLoaded', function () {
+          startBtn.addEventListener('click', function () {
             connectAndStartQuotes();
+          });
+
+          stopBtn.addEventListener('click', function () {
+            if (socket) {
+              socket.disconnect();
+              socket = null;
+              statusEl.textContent = 'Disconnected';
+              statusEl.className = 'status disconnected';
+              log('Stopped by user');
+              setWsButtons(false);
+            }
           });
         })();
       </script>
     </div>
 
     <div class="column">
-      <h2>SSE demo (getQuotesSSE)</h2>
+      <h2>SSE demo</h2>
       <div id="sse-status" class="status closed">Not connected</div>
       <section>
         <h3>Quotes stream</h3>
