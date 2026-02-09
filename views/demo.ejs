@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WebSocket &amp; SSE Sample</title>
+  <script src="https://cdn.socket.io/4.8.0/socket.io.min.js"></script>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, sans-serif; max-width: 1200px; margin: 2rem auto; padding: 0 1rem; }
+    h1 { font-size: 1.5rem; margin-bottom: 1.5rem; }
+    .columns { display: flex; gap: 2rem; flex-wrap: wrap; }
+    .column { flex: 1; min-width: 320px; }
+    .column h2 { font-size: 1.125rem; margin-bottom: 0.5rem; font-weight: 600; }
+    .status { padding: 0.5rem; border-radius: 6px; margin-bottom: 1rem; }
+    .status.connected { background: #d4edda; color: #155724; }
+    .status.disconnected { background: #f8d7da; color: #721c24; }
+    .status.open { background: #cce5ff; color: #004085; }
+    .status.closed { background: #f8d7da; color: #721c24; }
+    section { margin-bottom: 1rem; }
+    section h3 { display: block; margin-bottom: 0.25rem; font-weight: 500; font-size: 0.875rem; }
+    input, button { padding: 0.5rem 0.75rem; margin-right: 0.5rem; margin-bottom: 0.5rem; }
+    button { cursor: pointer; background: #0d6efd; color: #fff; border: none; border-radius: 6px; }
+    button:hover { background: #0b5ed7; }
+    button:disabled { opacity: 0.6; cursor: not-allowed; }
+    .log { background: #f5f5f5; padding: 0.75rem; border-radius: 6px; font-family: monospace; font-size: 0.875rem; overflow-y: auto; min-height: 120px; max-height: 320px; }
+    .log p { margin: 0.25rem 0; }
+  </style>
+</head>
+<body>
+  <h1>WebSocket &amp; SSE Sample</h1>
+
+  <div class="columns">
+    <div class="column">
+      <h2>WebSocket demo</h2>
+      <div id="status" class="status disconnected">Disconnected</div>
+      <section>
+        <h3>Quotes (streamed, then connection closes)</h3>
+        <div id="log" class="log"></div>
+      </section>
+
+      <script>
+        (function wsColumn() {
+          const statusEl = document.getElementById('status');
+          const logEl = document.getElementById('log');
+
+          function log(msg, type) {
+            const p = document.createElement('p');
+            p.textContent = (type ? '[' + type + '] ' : '') + msg;
+            logEl.appendChild(p);
+            logEl.scrollTop = logEl.scrollHeight;
+          }
+
+          let socket = null;
+
+          function connectAndStartQuotes() {
+            if (socket && socket.connected) {
+              emitPayload();
+              return;
+            }
+            log('Connecting…');
+            socket = io(window.location.origin);
+
+            socket.on('connect', function () {
+              statusEl.textContent = 'Connected';
+              statusEl.className = 'status connected';
+              log('Connected');
+              emitPayload();
+            });
+
+            socket.on('disconnect', function (reason) {
+              statusEl.textContent = 'Disconnected';
+              statusEl.className = 'status disconnected';
+              log('Disconnected. ' + (reason === 'io server disconnect' ? 'All quotes sent, connection closed.' : reason));
+            });
+
+            socket.on('connect_error', function (err) {
+              log('Connection error: ' + err.message, 'error');
+            });
+
+            socket.on('data', function (data) {
+              log('Initial data: ' + (typeof data === 'object' ? JSON.stringify(data) : data));
+            });
+
+            socket.on('quote', function (data) {
+              log('Quote: ' + (typeof data === 'string' ? data : JSON.stringify(data)));
+            });
+          }
+
+          function emitPayload() {
+            const raw = 'no data';
+            let payload = {};
+            if (raw) {
+              try {
+                payload = raw.startsWith('{') ? JSON.parse(raw) : { value: raw };
+              } catch (_) {
+                payload = { value: raw };
+              }
+            }
+            socket.emit('pollQuotes', payload);
+            log('Sent pollQuotes with payload');
+          }
+
+          window.addEventListener('DOMContentLoaded', function () {
+            connectAndStartQuotes();
+          });
+        })();
+      </script>
+    </div>
+
+    <div class="column">
+      <h2>SSE demo (getQuotesSSE)</h2>
+      <div id="sse-status" class="status closed">Not connected</div>
+      <section>
+        <h3>Quotes stream</h3>
+        <button id="sse-start">Start SSE</button>
+        <button id="sse-stop" disabled>Stop SSE</button>
+        <div id="sse-log" class="log"></div>
+      </section>
+
+      <script>
+        (function sseColumn() {
+          const statusEl = document.getElementById('sse-status');
+          const logEl = document.getElementById('sse-log');
+          const startBtn = document.getElementById('sse-start');
+          const stopBtn = document.getElementById('sse-stop');
+
+          function log(msg, type) {
+            const p = document.createElement('p');
+            p.textContent = (type ? '[' + type + '] ' : '') + msg;
+            logEl.appendChild(p);
+            logEl.scrollTop = logEl.scrollHeight;
+          }
+
+          let eventSource = null;
+
+          function sseUrl(key) {
+            const base = window.location.origin;
+            return base + '/quotes/sse/' + encodeURIComponent(key);
+          }
+
+          startBtn.addEventListener('click', function () {
+            if (eventSource) return;
+            log('Requesting key from POST /data…');
+            fetch(window.location.origin + '/data', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ source: 'sse-demo' }),
+            })
+              .then(function (res) { return res.text(); })
+              .then(function (key) {
+                log('Key: ' + key + ', connecting to SSE…');
+                statusEl.textContent = 'Connecting…';
+                statusEl.className = 'status disconnected';
+                const url = sseUrl(key);
+                eventSource = new EventSource(url);
+                eventSource.onopen = function () {
+                  statusEl.textContent = 'Connected';
+                  statusEl.className = 'status open';
+                  log('SSE connected');
+                  startBtn.disabled = true;
+                  stopBtn.disabled = false;
+                };
+                eventSource.onerror = function () {
+                  statusEl.textContent = 'Closed / Error';
+                  statusEl.className = 'status closed';
+                  log('SSE closed or error', 'event');
+                  if (eventSource) {
+                    eventSource.close();
+                    eventSource = null;
+                  }
+                  startBtn.disabled = false;
+                  stopBtn.disabled = true;
+                };
+                eventSource.onmessage = function (e) {
+                  log('Quote: ' + e.data);
+                };
+              })
+              .catch(function (err) {
+                log('Failed to get key: ' + err.message, 'error');
+              });
+          });
+
+          stopBtn.addEventListener('click', function () {
+            if (eventSource) {
+              eventSource.close();
+              eventSource = null;
+              statusEl.textContent = 'Not connected';
+              statusEl.className = 'status closed';
+              log('SSE stopped');
+              startBtn.disabled = false;
+              stopBtn.disabled = true;
+            }
+          });
+        })();
+      </script>
+    </div>
+  </div>
+</body>
+</html>

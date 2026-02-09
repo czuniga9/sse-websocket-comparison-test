@@ -12,8 +12,8 @@ export class AppController {
   @Get()
   @Header('Content-Type', 'text/html')
   getHello(@Res() res: any): string {
-    return res.render('websocket', {
-      title: "WebSocket Sample",
+    return res.render('demo', {
+      title: "Demo",
       FooterJs: "",
       layout: false,
     });
