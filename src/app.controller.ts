@@ -29,22 +29,20 @@ export class AppController {
 
   @Sse('quotes/sse/:key')
   public getQuotesSSE(@Param('key') key: string): Observable<MessageEvent> {
-    console.log(this.data);
     const data = this.data[key] || 'no data';
 
-    // console.log('>>> getQuotesSSE called');
     return new Observable((observer) => {
-      console.log('>>> start');
-      observer.next({ 'data': data });
+      observer.next({ 'data': {message:'original payload', data} });
 
       const promises = this.appService.quotes.map((quote, index) =>
         this.appService.sendQuote(quote, index).then((q: string) => observer.next({ data: q })),
       );
 
       Promise.allSettled(promises).then((results) => {
-        console.log('>>> all quotes sent');
+        observer.next({ data: 'end' });
         observer.complete();
         results.filter((result) => result.status === 'rejected').forEach((result) => {
+          // log errors
           console.log('>>> rejected', result.reason.cause);
         });
       });

@@ -88,7 +88,7 @@
           }
 
           function emitPayload() {
-            const raw = 'no data';
+            const raw = JSON.stringify({ source: 'sse-demo' });
             let payload = {};
             if (raw) {
               try {
@@ -133,6 +133,14 @@
           }
 
           let eventSource = null;
+          let closedNormally = false;
+
+          function closeSseUI() {
+            statusEl.textContent = 'Not connected';
+            statusEl.className = 'status closed';
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+          }
 
           function sseUrl(key) {
             const base = window.location.origin;
@@ -141,6 +149,7 @@
 
           startBtn.addEventListener('click', function () {
             if (eventSource) return;
+            closedNormally = false;
             log('Requesting key from POST /data…');
             fetch(window.location.origin + '/data', {
               method: 'POST',
@@ -162,9 +171,10 @@
                   stopBtn.disabled = false;
                 };
                 eventSource.onerror = function () {
-                  statusEl.textContent = 'Closed / Error';
+                  if (closedNormally) return;
+                  statusEl.textContent = 'Error';
                   statusEl.className = 'status closed';
-                  log('SSE closed or error', 'event');
+                  log('SSE error', 'event');
                   if (eventSource) {
                     eventSource.close();
                     eventSource = null;
@@ -173,6 +183,16 @@
                   stopBtn.disabled = true;
                 };
                 eventSource.onmessage = function (e) {
+                  if (e.data === 'end') {
+                    closedNormally = true;
+                    log('Stream ended');
+                    if (eventSource) {
+                      eventSource.close();
+                      eventSource = null;
+                    }
+                    closeSseUI();
+                    return;
+                  }
                   log('Quote: ' + e.data);
                 };
               })
